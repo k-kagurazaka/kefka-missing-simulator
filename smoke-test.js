@@ -11,6 +11,7 @@ const chrome = chromeCandidates.find(fs.existsSync);
 if (!chrome) throw new Error("Google Chrome was not found.");
 
 const port = 9333;
+const simulationStrategy = process.env.SMOKE_STRATEGY || "lean";
 const profile = path.join(os.tmpdir(), `gimmick-smoke-${Date.now()}`);
 const browser = spawn(chrome, [
   "--headless=new",
@@ -79,7 +80,7 @@ async function run() {
     mobile: false,
   });
   await send("Page.navigate", {
-    url: "http://127.0.0.1:4173/?autoplay=1&speed=20&role=MT",
+    url: `http://127.0.0.1:4173/?autoplay=1&speed=20&role=MT&strategy=${simulationStrategy}`,
   });
   await sleep(250);
   const layoutResult = await send("Runtime.evaluate", {
@@ -127,7 +128,8 @@ async function run() {
         return counts;
       }, {});
       for (let attempt = 0; attempt < 200; attempt += 1) {
-        const players = createPlayers();
+        const strategy = attempt % 2 ? "yarn" : "lean";
+        const players = createPlayers(strategy);
         const byId = Object.fromEntries(players.map((player) => [player.id, player]));
         const th = ["MT", "ST", "H1", "H2"].map((id) => byId[id]);
         const dps = ["D1", "D2", "D3", "D4"].map((id) => byId[id]);
@@ -144,10 +146,17 @@ async function run() {
         if (thSecondary === dpsSecondary) {
           return { ok: false, reason: "opening families duplicated", thSecondary, dpsSecondary };
         }
-        for (const pair of PAIRS) {
+        const strategyPairs = strategy === "yarn" ? YARN_PAIRS : PAIRS;
+        for (const pair of strategyPairs) {
           const groups = pair.map((id) => byId[id].group);
-          if (groups.filter((group) => group === "A").length !== 1) {
+          if (strategy === "lean" && groups.filter((group) => group === "A").length !== 1) {
             return { ok: false, reason: "invalid lean pair split", pair, groups };
+          }
+          if (strategy === "yarn") {
+            const expected = pair.some((id) => byId[id].mark === "share") ? "A" : "B";
+            if (groups.some((group) => group !== expected)) {
+              return { ok: false, reason: "invalid yarn pair grouping", pair, groups, expected };
+            }
           }
         }
         for (const [group, rounds] of Object.entries(GROUP_ROUNDS)) {
@@ -174,6 +183,28 @@ async function run() {
   const distribution = JSON.parse(distributionResult.result.value);
   if (!distribution.ok) {
     throw new Error(`Invalid spell hazard distribution: ${JSON.stringify(distribution)}`);
+  }
+  const selectionResult = await send("Runtime.evaluate", {
+    expression: `JSON.stringify((() => {
+      resetSelection();
+      const before = UI.roleSelection.classList.contains("hidden");
+      selectStrategy("yarn");
+      const after = UI.roleSelection.classList.contains("hidden");
+      const pair = pairIdFor("MT", "yarn");
+      return {
+        ok: before && !after && selectedStrategy === "yarn" && pair === "H1" &&
+          UI.strategyName.textContent.includes("ヤーン式"),
+        before,
+        after,
+        selectedStrategy,
+        pair,
+      };
+    })())`,
+    returnByValue: true,
+  });
+  const selection = JSON.parse(selectionResult.result.value);
+  if (!selection.ok) {
+    throw new Error(`Invalid strategy selection flow: ${JSON.stringify(selection)}`);
   }
   const shareCountResult = await send("Runtime.evaluate", {
     expression: `JSON.stringify((() => {
@@ -373,21 +404,22 @@ async function run() {
       title: document.getElementById("resultTitle").textContent,
       reason: document.getElementById("resultReason").textContent,
       time: document.getElementById("timeDisplay").textContent,
-      player: { id: getPlayer().id, group: getPlayer().group, x: getPlayer().x, y: getPlayer().y }
+      player: { id: getPlayer().id, group: getPlayer().group, x: getPlayer().x, y: getPlayer().y },
+      strategy: state.strategy
     })`,
     returnByValue: true,
   });
   const status = JSON.parse(result.result.value);
 
   if (exceptions.length) throw new Error(`Browser exceptions: ${exceptions.join(", ")}`);
-  if (status.hidden || status.title !== "ミッシング突破") {
+  if (status.hidden || status.title !== "ミッシング突破" || status.strategy !== simulationStrategy) {
     throw new Error(`Simulation did not clear: ${JSON.stringify(status)}`);
   }
 
   await send("Page.navigate", { url: "http://127.0.0.1:4173/?speed=20" });
   await sleep(300);
   await send("Runtime.evaluate", {
-    expression: `document.querySelector(".role-button").click()`,
+    expression: `selectStrategy("lean"); document.querySelector(".role-button").click()`,
   });
   await sleep(1500);
   const failureResult = await send("Runtime.evaluate", {

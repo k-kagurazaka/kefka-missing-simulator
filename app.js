@@ -11,7 +11,13 @@ const UI = {
   resultTitle: document.getElementById("resultTitle"),
   resultReason: document.getElementById("resultReason"),
   retry: document.getElementById("retryButton"),
+  selectionTitle: document.getElementById("selectionTitle"),
+  selectionCopy: document.getElementById("selectionCopy"),
+  strategyButtons: document.getElementById("strategyButtons"),
+  roleSelection: document.getElementById("roleSelection"),
   roleButtons: document.getElementById("roleButtons"),
+  strategyName: document.getElementById("strategyName"),
+  strategyDescription: document.getElementById("strategyDescription"),
   roleIcon: document.getElementById("roleIcon"),
   roleName: document.getElementById("roleName"),
   pairName: document.getElementById("pairName"),
@@ -57,6 +63,17 @@ const ROLES = [
   { id: "D4", pair: "D3", kind: "dps", category: "ranged", color: "#e34f57", icon: "assets/DPSRole.png" },
 ];
 const PAIRS = [["MT", "ST"], ["H1", "H2"], ["D1", "D2"], ["D3", "D4"]];
+const YARN_PAIRS = [["MT", "H1"], ["ST", "H2"], ["D1", "D3"], ["D2", "D4"]];
+const STRATEGIES = {
+  lean: {
+    name: "KTりーん式",
+    description: "同ロールペアで判断。自分が頭割りなら先組、相方なら後組、どちらにもなければロール優先度が高い方が先組。",
+  },
+  yarn: {
+    name: "KTヤーン式",
+    description: "MT-H1／ST-H2／D1-D3／D2-D4で判断。ペア内に頭割りがあれば2人とも先組、なければ2人とも後組。",
+  },
+};
 const GROUP_ROUNDS = { A: [1, 2, 3, 8], B: [4, 5, 6, 7] };
 const TOWER_TIMES = [10, 20, 30, 40, 50, 60, 70, 80];
 const TIMELINE_ITEMS = [
@@ -93,7 +110,9 @@ let state = {
   pastFuture: {},
   moveTarget: null,
   bannerUntil: 0,
+  strategy: null,
 };
+let selectedStrategy = null;
 
 if (querySpeed > 0) {
   if (![...UI.speed.options].some((option) => Number(option.value) === querySpeed)) {
@@ -133,8 +152,16 @@ function createOpeningMarks() {
   return marks;
 }
 
-function buildGroups(openingMarks) {
+function buildGroups(openingMarks, strategy = "lean") {
   const groupA = new Set();
+  if (strategy === "yarn") {
+    for (const pair of YARN_PAIRS) {
+      if (pair.some((id) => openingMarks[id] === "share")) {
+        pair.forEach((id) => groupA.add(id));
+      }
+    }
+    return groupA;
+  }
   for (const [higher, lower] of PAIRS) {
     if (openingMarks[higher] === "share") groupA.add(higher);
     else if (openingMarks[lower] === "share") groupA.add(lower);
@@ -157,9 +184,9 @@ function nextRoundFor(player, afterRound = 0) {
   return GROUP_ROUNDS[player.group].find((round) => round > afterRound) || null;
 }
 
-function createPlayers() {
+function createPlayers(strategy = "lean") {
   const openingMarks = createOpeningMarks();
-  const groupA = buildGroups(openingMarks);
+  const groupA = buildGroups(openingMarks, strategy);
   const players = ROLES.map((role, index) => {
     const group = groupA.has(role.id) ? "A" : "B";
     const firstRound = GROUP_ROUNDS[group][0];
@@ -200,19 +227,52 @@ function setupRoleButtons() {
     const button = document.createElement("button");
     button.className = "role-button";
     button.innerHTML = `<img src="${role.icon}" alt=""><strong>${role.id}</strong>`;
-    button.addEventListener("click", () => startGame(role.id));
+    button.addEventListener("click", () => startGame(role.id, selectedStrategy));
     UI.roleButtons.appendChild(button);
   }
 }
 
-function startGame(playerId) {
+function selectStrategy(strategy) {
+  if (!STRATEGIES[strategy]) return;
+  selectedStrategy = strategy;
+  for (const button of UI.strategyButtons.querySelectorAll(".strategy-button")) {
+    const selected = button.dataset.strategy === strategy;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+  UI.selectionTitle.textContent = STRATEGIES[strategy].name;
+  UI.selectionCopy.textContent = "担当ロールを選択してください。組分け後の塔処理はどちらの方式も共通です。";
+  UI.strategyName.textContent = `${STRATEGIES[strategy].name} · 1238 / 4567`;
+  UI.strategyDescription.textContent = STRATEGIES[strategy].description;
+  UI.roleSelection.classList.remove("hidden");
+}
+
+function resetSelection() {
+  selectedStrategy = null;
+  UI.selectionTitle.textContent = "攻略法を選択";
+  UI.selectionCopy.textContent = "最初の先組・後組の決め方を選択してください。組分け後の塔処理は共通です。";
+  UI.roleSelection.classList.add("hidden");
+  for (const button of UI.strategyButtons.querySelectorAll(".strategy-button")) {
+    button.classList.remove("selected");
+    button.setAttribute("aria-pressed", "false");
+  }
+}
+
+function pairIdFor(playerId, strategy) {
+  const pairs = strategy === "yarn" ? YARN_PAIRS : PAIRS;
+  const pair = pairs.find((ids) => ids.includes(playerId));
+  return pair?.find((id) => id !== playerId) || "—";
+}
+
+function startGame(playerId, strategy = "lean") {
+  const activeStrategy = STRATEGIES[strategy] ? strategy : "lean";
   state = {
     running: true,
     finished: false,
     time: -3,
     lastFrame: performance.now(),
     playerId,
-    players: createPlayers(),
+    players: createPlayers(activeStrategy),
     resolvedTowers: new Set(),
     resolvedCircles: new Set(),
     resolvedLocks: new Set(),
@@ -226,6 +286,7 @@ function startGame(playerId) {
     },
     moveTarget: null,
     bannerUntil: 0,
+    strategy: activeStrategy,
   };
   const player = getPlayer();
   player.x = 400;
@@ -732,7 +793,7 @@ function updateAssignment() {
   const assignment = round ? assignmentFor(player, round) : null;
   UI.roleIcon.src = player.role.icon;
   UI.roleName.textContent = player.id;
-  UI.pairName.textContent = `PAIR ${player.role.pair}`;
+  UI.pairName.textContent = `PAIR ${pairIdFor(player.id, state.strategy)}`;
   UI.groupName.textContent = `${player.group === "A" ? "先組" : "後組"} · ${GROUP_ROUNDS[player.group].join(" / ")}`;
   UI.markBadge.textContent = MARK_LABEL[player.mark];
   UI.markBadge.className = `mark-badge ${player.mark}`;
@@ -1049,10 +1110,16 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 UI.retry.addEventListener("click", () => {
   UI.resultModal.classList.add("hidden");
+  resetSelection();
   UI.roleModal.classList.remove("hidden");
 });
 
+UI.strategyButtons.addEventListener("click", (event) => {
+  const button = event.target.closest(".strategy-button");
+  if (button) selectStrategy(button.dataset.strategy);
+});
 setupRoleButtons();
 setupTimeline();
+resetSelection();
 drawArena();
-if (autoplay) startGame(query.get("role") || "MT");
+if (autoplay) startGame(query.get("role") || "MT", query.get("strategy") || "lean");

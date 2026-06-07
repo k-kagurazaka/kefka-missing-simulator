@@ -185,6 +185,27 @@ select { padding: 6px 8px; border: 1px solid #35425a; border-radius: 4px; backgr
   box-shadow: 0 30px 100px rgba(0,0,0,0.55);
 }
 .modal-copy { margin: 10px 0 24px; color: #9baac0; line-height: 1.75; font-size: 13px; }
+.strategy-buttons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.strategy-button {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 104px;
+  padding: 18px;
+  border: 1px solid #2d3a50;
+  border-radius: 5px;
+  background: #111927;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: 120ms ease;
+}
+.strategy-button:hover,
+.strategy-button.selected { transform: translateY(-2px); border-color: var(--cyan); background: #172438; }
+.strategy-button strong { font-size: 16px; }
+.strategy-button span { color: #9daac0; font-size: 11px; line-height: 1.6; }
+.role-selection { margin-top: 26px; padding-top: 24px; border-top: 1px solid rgba(112, 145, 195, 0.2); }
+.role-selection h3 { margin: 0; font-size: 18px; }
 .role-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
 .role-button {
   display: flex;
@@ -222,6 +243,7 @@ select { padding: 6px 8px; border: 1px solid #35425a; border-radius: 4px; backgr
   #nextDisplay { min-height: 3.6em; }
   .game-layout { padding-top: 12px; }
   .side-panel { display: flex; }
+  .strategy-buttons,
   .role-buttons { grid-template-columns: repeat(2, 1fr); }
   .modal-card { padding: 25px 18px; }
 }

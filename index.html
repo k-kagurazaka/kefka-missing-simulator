@@ -68,13 +68,27 @@
 
     <div id="roleModal" class="modal">
       <div class="modal-card">
-        <p class="eyebrow">SELECT YOUR POSITION</p>
-        <h2>担当ロールを選択</h2>
-        <p class="modal-copy">残りの7人は自動で正解位置へ移動します。あなたの担当だけを操作してください。</p>
-        <div id="roleButtons" class="role-buttons"></div>
-        <div class="strategy-note">
-          <strong>KTりーん式 · 1238 / 4567</strong>
-          <span>同ロールペアで先組・後組を判断。相方に頭割りなら相方が先、どちらも頭割りなしなら左側の優先度が先。</span>
+        <p class="eyebrow">SELECT STRATEGY</p>
+        <h2 id="selectionTitle">攻略法を選択</h2>
+        <p id="selectionCopy" class="modal-copy">最初の先組・後組の決め方を選択してください。組分け後の塔処理は共通です。</p>
+        <div id="strategyButtons" class="strategy-buttons">
+          <button class="strategy-button" data-strategy="yarn">
+            <strong>KTヤーン式</strong>
+            <span>異ロールペアに頭割りがあれば2人とも先組</span>
+          </button>
+          <button class="strategy-button" data-strategy="lean">
+            <strong>KTりーん式</strong>
+            <span>同ロールペアから1人ずつ先組</span>
+          </button>
+        </div>
+        <div id="roleSelection" class="role-selection hidden">
+          <h3>担当ロールを選択</h3>
+          <p class="modal-copy">残りの7人は自動で正解位置へ移動します。あなたの担当だけを操作してください。</p>
+          <div id="roleButtons" class="role-buttons"></div>
+          <div class="strategy-note">
+            <strong id="strategyName">KT式 · 1238 / 4567</strong>
+            <span id="strategyDescription"></span>
+          </div>
         </div>
       </div>
     </div>

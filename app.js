@@ -356,8 +356,8 @@ function assignmentFor(player, round) {
       : { tower: 1, x: 480, y: 460, name: "塔2・内側扇" };
   }
   return side === 0
-    ? { tower: 0, x: 250, y: 545, name: "塔1・外側円" }
-    : { tower: 1, x: 550, y: 545, name: "塔2・外側円" };
+    ? { tower: 0, x: 285, y: 555, name: "塔1・外側円" }
+    : { tower: 1, x: 515, y: 555, name: "塔2・外側円" };
 }
 
 function supportPosition(player, round) {

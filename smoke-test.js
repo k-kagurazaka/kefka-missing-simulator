@@ -132,6 +132,102 @@ async function run() {
   if (!distribution.ok) {
     throw new Error(`Invalid spell hazard distribution: ${JSON.stringify(distribution)}`);
   }
+  const shareCountResult = await send("Runtime.evaluate", {
+    expression: `JSON.stringify((() => {
+      const original = state.players.map((player) => ({ x: player.x, y: player.y }));
+      const effect = { type: "share", sourceId: state.players[0].id, x: 100, y: 100 };
+      state.players.forEach((player, index) => {
+        player.x = index < 2 ? 100 + index * 20 : 700;
+        player.y = index < 2 ? 100 : 700;
+      });
+      const twoPlayers = spellHazardFailure([effect], 1);
+      state.players[2].x = 120;
+      state.players[2].y = 120;
+      const threePlayers = spellHazardFailure([effect], 1);
+      state.players[3].x = 80;
+      state.players[3].y = 120;
+      const fourPlayers = spellHazardFailure([effect], 1);
+      state.players.forEach((player, index) => {
+        player.x = original[index].x;
+        player.y = original[index].y;
+      });
+      return {
+        ok: twoPlayers?.includes("現在2人") && threePlayers === null &&
+          fourPlayers?.includes("現在4人"),
+        twoPlayers,
+        threePlayers,
+        fourPlayers,
+      };
+    })())`,
+    returnByValue: true,
+  });
+  const shareCount = JSON.parse(shareCountResult.result.value);
+  if (!shareCount.ok) {
+    throw new Error(`Invalid share count handling: ${JSON.stringify(shareCount)}`);
+  }
+  const directionResult = await send("Runtime.evaluate", {
+    expression: `JSON.stringify((() => {
+      const pointAt = (degrees, radius) => {
+        const angle = degrees * Math.PI / 180;
+        return {
+          x: BOSS.x + Math.sin(angle) * radius,
+          y: BOSS.y + Math.cos(angle) * radius,
+        };
+      };
+      state.pastFuture[2] = "過去";
+      const pastCenter = stackPositionFor(2);
+      const inside = isDirectionLockPositionValid(pointAt(14, 100), 2);
+      const outside = isDirectionLockPositionValid(pointAt(16, 100), 2);
+      const tooFar = isDirectionLockPositionValid(pointAt(0, 190), 2);
+      state.pastFuture[2] = "未来";
+      const futureCenter = stackPositionFor(2);
+      return {
+        ok: pastCenter.x === BOSS.x && pastCenter.y === BOSS.y + 100 &&
+          futureCenter.x === BOSS.x && futureCenter.y === BOSS.y - 100 &&
+          inside && !outside && !tooFar,
+        pastCenter,
+        futureCenter,
+        inside,
+        outside,
+        tooFar,
+      };
+    })())`,
+    returnByValue: true,
+  });
+  const direction = JSON.parse(directionResult.result.value);
+  if (!direction.ok) {
+    throw new Error(`Invalid direction lock tolerance: ${JSON.stringify(direction)}`);
+  }
+  const pastFutureAoeResult = await send("Runtime.evaluate", {
+    expression: `JSON.stringify((() => {
+      const original = state.players.map((player) => ({ x: player.x, y: player.y }));
+      const targets = circleTargets(2);
+      state.players.forEach((player, index) => {
+        player.x = 100 + (index % 4) * 180;
+        player.y = 100 + Math.floor(index / 4) * 300;
+      });
+      const solo = pastFutureAoeFailure(2);
+      const target = targets[0];
+      const other = state.players.find((player) => player.id !== target.id);
+      other.x = target.x + 20;
+      other.y = target.y;
+      const shared = pastFutureAoeFailure(2);
+      state.players.forEach((player, index) => {
+        player.x = original[index].x;
+        player.y = original[index].y;
+      });
+      return {
+        ok: solo === null && shared?.includes("巻き込まれました"),
+        solo,
+        shared,
+      };
+    })())`,
+    returnByValue: true,
+  });
+  const pastFutureAoe = JSON.parse(pastFutureAoeResult.result.value);
+  if (!pastFutureAoe.ok) {
+    throw new Error(`Invalid past/future AoE handling: ${JSON.stringify(pastFutureAoe)}`);
+  }
   await sleep(1950);
   if (process.env.SMOKE_SCREENSHOT) {
     const screenshot = await send("Page.captureScreenshot", { format: "png" });
@@ -144,7 +240,8 @@ async function run() {
       hidden: document.getElementById("resultModal").classList.contains("hidden"),
       title: document.getElementById("resultTitle").textContent,
       reason: document.getElementById("resultReason").textContent,
-      time: document.getElementById("timeDisplay").textContent
+      time: document.getElementById("timeDisplay").textContent,
+      player: { id: getPlayer().id, group: getPlayer().group, x: getPlayer().x, y: getPlayer().y }
     })`,
     returnByValue: true,
   });

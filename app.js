@@ -41,6 +41,9 @@ const SPELL_RADII = {
 const FAN_LENGTH = 235;
 const FAN_HALF_ANGLE = Math.PI / 5;
 const PAST_FUTURE_RADIUS = SPELL_RADII.circle;
+const DIRECTION_LOCK_DISTANCE = 100;
+const DIRECTION_LOCK_TOLERANCE = 82;
+const DIRECTION_LOCK_HALF_ANGLE = 15 * Math.PI / 180;
 const ROLES = [
   { id: "MT", pair: "ST", kind: "tank", category: "tank", color: "#3b8ded", icon: "assets/TankRole.png" },
   { id: "ST", pair: "MT", kind: "tank", category: "tank", color: "#3b8ded", icon: "assets/TankRole.png" },
@@ -260,7 +263,7 @@ function assignmentFor(player, round) {
   if (player.group !== info.group) return null;
   const mark = markForRound(player, round);
   if (info.odd) {
-    if (mark === "fan") return { tower: 0, x: 255, y: 592, name: "塔1・外側" };
+    if (mark === "fan") return { tower: 0, x: 260, y: 575, name: "塔1・外側" };
     if (mark === "circle") return { tower: 1, x: 545, y: 595, name: "塔2・外側" };
     if (markSide(player, round) === 0) {
       const radius = TOWERS[0].r / 2;
@@ -304,7 +307,7 @@ function supportPosition(player, round) {
   }
   const positions = {
     tank: [355, 495],
-    healer: [205, 610],
+    healer: [225, 600],
     melee: [445, 495],
     ranged: [525, 480],
   };
@@ -314,7 +317,10 @@ function supportPosition(player, round) {
 
 function stackPositionFor(sourceRound) {
   const flavor = state.pastFuture[sourceRound] || "過去";
-  return flavor === "過去" ? { x: 400, y: 430 } : { x: 400, y: 230 };
+  return {
+    x: BOSS.x,
+    y: BOSS.y + (flavor === "過去" ? DIRECTION_LOCK_DISTANCE : -DIRECTION_LOCK_DISTANCE),
+  };
 }
 
 function wanderingTarget(player, base, settleAt) {
@@ -335,6 +341,9 @@ function npcTarget(player) {
     if (state.time >= base + 3.2 && state.time < base + 7.8) {
       const stack = stackPositionFor(sourceRound);
       return wanderingTarget(player, stack, base + 4.15);
+    }
+    if (sourceRound === 8 && state.time >= base + 7.8 && state.time < base + 10.6) {
+      return { x: BOSS.x, y: BOSS.y + 120 };
     }
   }
 
@@ -523,16 +532,45 @@ function circleTargets(round) {
   return [...activeFans, tank, melee].filter(Boolean);
 }
 
+function pastFutureAoeFailure(round) {
+  for (const target of circleTargets(round)) {
+    const hits = state.players.filter(
+      (player) => distance(player, target) <= PAST_FUTURE_RADIUS
+    );
+    if (hits.length !== 1 || hits[0].id !== target.id) {
+      const others = hits.filter((player) => player.id !== target.id);
+      if (others.length) {
+        return `${target.id}の過去/未来AoEに${others.map((player) => player.id).join("・")}が巻き込まれました。`;
+      }
+      return `${target.id}が自身の過去/未来AoEを正しく受けられていません。`;
+    }
+  }
+  return null;
+}
+
 function resolveCircle(round) {
   if (state.resolvedCircles.has(round) || !state.running) return;
   state.resolvedCircles.add(round);
+  const aoeFailure = pastFutureAoeFailure(round);
+  if (aoeFailure) {
+    fail(`${round}回目：${aoeFailure}`);
+  }
+}
+
+function isDirectionLockPositionValid(player, sourceRound) {
+  const stack = stackPositionFor(sourceRound);
+  const targetAngle = Math.atan2(stack.y - BOSS.y, stack.x - BOSS.x);
+  const playerAngle = Math.atan2(player.y - BOSS.y, player.x - BOSS.x);
+  const radialDifference = Math.abs(distance(player, BOSS) - DIRECTION_LOCK_DISTANCE);
+  const angleOffset = Math.abs(angleDifference(playerAngle, targetAngle));
+  return radialDifference <= DIRECTION_LOCK_TOLERANCE &&
+    angleOffset <= DIRECTION_LOCK_HALF_ANGLE;
 }
 
 function resolveDirectionLock(sourceRound) {
   if (state.resolvedLocks.has(sourceRound) || !state.running) return;
   state.resolvedLocks.add(sourceRound);
-  const stack = stackPositionFor(sourceRound);
-  if (distance(getPlayer(), stack) > 82) {
+  if (!isDirectionLockPositionValid(getPlayer(), sourceRound)) {
     fail(`${state.pastFuture[sourceRound]}：向き確定時に誘導位置へ集合できていません。`);
   }
 }

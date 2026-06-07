@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ミッシング - ギミックシミュレーター</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>ミッシング</h1>
+        </div>
+        <div class="status-strip">
+          <div><span>TIME</span><strong id="timeDisplay">0:00</strong></div>
+          <div><span>NEXT</span><strong id="nextDisplay">役割を選択</strong></div>
+          <div><span>HAZARD</span><strong id="stackDisplay">4</strong></div>
+        </div>
+      </header>
+
+      <section class="game-layout">
+        <div class="arena-panel">
+          <canvas id="arena" width="800" height="800" aria-label="ミッシングの戦闘フィールド"></canvas>
+          <div id="castBar" class="cast-bar hidden">
+            <span id="castName"></span>
+            <div><i id="castFill"></i></div>
+          </div>
+          <div id="banner" class="banner hidden"></div>
+        </div>
+
+        <aside class="side-panel">
+          <section class="card assignment-card">
+            <p class="card-label">YOUR ASSIGNMENT</p>
+            <div class="assignment-main">
+              <img id="roleIcon" src="assets/TankRole.png" alt="">
+              <div><strong id="roleName">未選択</strong><span id="pairName">PAIR —</span></div>
+              <b id="markBadge" class="mark-badge">—</b>
+            </div>
+            <div class="assignment-grid">
+              <div><span>組</span><strong id="groupName">—</strong></div>
+              <div><span>次の塔</span><strong id="towerAssignment">—</strong></div>
+            </div>
+          </section>
+
+          <section class="card timeline-card">
+            <div class="card-heading"><p class="card-label">TIMELINE</p><span id="roundDisplay">ROUND — / 8</span></div>
+            <ol id="timeline"></ol>
+          </section>
+
+          <section class="card controls-card">
+            <p class="card-label">CONTROLS</p>
+            <div class="key-row"><kbd>WASD</kbd><kbd>矢印</kbd><span>移動</span></div>
+            <div class="key-row"><kbd>SHIFT</kbd><span>スプリント</span></div>
+            <div class="key-row"><kbd>CLICK</kbd><span>クリック地点へ移動</span></div>
+            <label class="speed-control">進行速度
+              <select id="speedSelect">
+                <option value="1">1.0x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2">2.0x</option>
+              </select>
+            </label>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <div id="roleModal" class="modal">
+      <div class="modal-card">
+        <p class="eyebrow">SELECT STRATEGY</p>
+        <h2 id="selectionTitle">攻略法を選択</h2>
+        <p id="selectionCopy" class="modal-copy">最初の先組・後組の決め方を選択してください。組分け後の塔処理は共通です。</p>
+        <div id="strategyButtons" class="strategy-buttons">
+          <button class="strategy-button" data-strategy="yarn">
+            <strong>KTヤーン式</strong>
+            <span>異ロールペアに頭割りがあれば2人とも先組</span>
+          </button>
+          <button class="strategy-button" data-strategy="lean">
+            <strong>KTりーん式</strong>
+            <span>同ロールペアから1人ずつ先組</span>
+          </button>
+        </div>
+        <div id="roleSelection" class="role-selection hidden">
+          <h3>担当ロールを選択</h3>
+          <p class="modal-copy">残りの7人は自動で正解位置へ移動します。あなたの担当だけを操作してください。</p>
+          <div id="roleButtons" class="role-buttons"></div>
+          <div class="strategy-note">
+            <strong id="strategyName">KT式 · 1238 / 4567</strong>
+            <span id="strategyDescription"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="resultModal" class="modal hidden">
+      <div class="modal-card result-card">
+        <p id="resultKicker" class="eyebrow">DUTY FAILED</p>
+        <h2 id="resultTitle">GAME OVER</h2>
+        <p id="resultReason" class="modal-copy"></p>
+        <button id="retryButton" class="primary-button">もう一度挑戦</button>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+    <footer>© SQUARE ENIX</footer>
+  </body>
+</html>

@@ -221,8 +221,19 @@ async function run() {
       const originalResolvedTowers = state.resolvedTowers;
       const originalResolvedLocks = state.resolvedLocks;
       const originalPastFuture = state.pastFuture[8];
+      const originalPosition = { x: state.players[0].x, y: state.players[0].y };
       state.resolvedTowers = new Set([1, 2]);
       state.resolvedLocks = new Set();
+      const directionStaging = assignmentPositionFor(state.players[0], 2);
+      state.players[0].x = directionStaging.x;
+      state.players[0].y = directionStaging.y;
+      state.time = TOWER_TIMES[1] + 0.1;
+      const directionWait = npcTarget(state.players[0]);
+      const expectedDirectionWait = wanderingTarget(
+        state.players[0],
+        directionStaging,
+        TOWER_TIMES[1] + 5
+      );
       state.time = TOWER_TIMES[1] + 4.999;
       const beforeCast = npcTarget(state.players[0]);
       state.time = TOWER_TIMES[1] + 5;
@@ -248,15 +259,20 @@ async function run() {
       state.resolvedTowers = originalResolvedTowers;
       state.resolvedLocks = originalResolvedLocks;
       state.pastFuture[8] = originalPastFuture;
+      state.players[0].x = originalPosition.x;
+      state.players[0].y = originalPosition.y;
 
       return {
         ok: Math.abs(mover.x - 10) < 0.001 && mover.y === 0 &&
+          distance(directionWait, expectedDirectionWait) < 0.001 &&
           distance(beforeCast, directionLockPositionFor(2)) < 1 &&
           distance(atCastStart, expectedTarget) < 0.001 &&
           distance(finalGather, { x: BOSS.x, y: BOSS.y - DIRECTION_LOCK_DISTANCE }) < 1 &&
           distance(finalWait, { x: BOSS.x, y: BOSS.y - DIRECTION_LOCK_DISTANCE }) < 20 &&
           finalMove.y < BOSS.y,
         mover,
+        directionWait,
+        expectedDirectionWait,
         beforeCast,
         atCastStart,
         expectedTarget,

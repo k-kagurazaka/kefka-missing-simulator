@@ -381,7 +381,15 @@ function npcTarget(player) {
     const base = TOWER_TIMES[sourceRound - 1];
     if (state.resolvedTowers.has(sourceRound) && !state.resolvedLocks.has(sourceRound)) {
       const stack = directionLockPositionFor(sourceRound);
-      return wanderingTarget(player, stack, base + 4.15);
+      if (sourceRound === 8) {
+        return wanderingTarget(player, stack, base + 4.15);
+      }
+      return timedTarget(
+        player,
+        stack,
+        assignmentPositionFor(player, sourceRound),
+        base + 5
+      );
     }
     if (sourceRound === 8 && state.resolvedLocks.has(sourceRound) &&
         state.time < base + 10.6) {

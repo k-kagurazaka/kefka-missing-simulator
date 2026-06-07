@@ -365,9 +365,9 @@ function supportPosition(player, round) {
   if (!info.odd) {
     const positions = {
       tank: [330, 285],
-      healer: [230, 455],
+      healer: [240, 455],
       melee: [470, 285],
-      ranged: [570, 455],
+      ranged: [560, 455],
     };
     const [x, y] = positions[player.role.category];
     return { x, y };

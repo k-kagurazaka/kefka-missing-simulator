@@ -181,12 +181,26 @@ async function run() {
       const tooFar = isDirectionLockPositionValid(pointAt(0, 190), 2);
       state.pastFuture[2] = "未来";
       const futureCenter = stackPositionFor(2);
+      state.pastFuture[8] = "過去";
+      const finalPastLock = directionLockPositionFor(8);
+      const finalPastSafe = finalSafePositionFor(8);
+      state.pastFuture[8] = "未来";
+      const finalFutureLock = directionLockPositionFor(8);
+      const finalFutureSafe = finalSafePositionFor(8);
       return {
         ok: pastCenter.x === BOSS.x && pastCenter.y === BOSS.y + 100 &&
           futureCenter.x === BOSS.x && futureCenter.y === BOSS.y - 100 &&
+          finalPastLock.x === BOSS.x && finalPastLock.y === BOSS.y - 100 &&
+          finalFutureLock.x === BOSS.x && finalFutureLock.y === BOSS.y - 100 &&
+          finalPastSafe.x === BOSS.x && finalPastSafe.y === BOSS.y - 100 &&
+          finalFutureSafe.x === BOSS.x && finalFutureSafe.y === BOSS.y + 100 &&
           inside && !outside && !tooFar,
         pastCenter,
         futureCenter,
+        finalPastLock,
+        finalFutureLock,
+        finalPastSafe,
+        finalFutureSafe,
         inside,
         outside,
         tooFar,
@@ -206,6 +220,7 @@ async function run() {
       const originalTime = state.time;
       const originalResolvedTowers = state.resolvedTowers;
       const originalResolvedLocks = state.resolvedLocks;
+      const originalPastFuture = state.pastFuture[8];
       state.resolvedTowers = new Set([1, 2]);
       state.resolvedLocks = new Set();
       state.time = TOWER_TIMES[1] + 4.999;
@@ -214,19 +229,40 @@ async function run() {
       state.resolvedLocks.add(2);
       const atCastStart = npcTarget(state.players[0]);
       const assignment = assignmentFor(state.players[0], 3) || supportPosition(state.players[0], 3);
-      const expectedTarget = wanderingTarget(state.players[0], assignment, TOWER_TIMES[2]);
+      const staging = directionLockPositionFor(2);
+      const expectedTarget = timedTarget(state.players[0], assignment, staging, TOWER_TIMES[2]);
+
+      state.resolvedTowers = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
+      state.resolvedLocks = new Set([2, 4, 6]);
+      state.pastFuture[8] = "過去";
+      state.time = TOWER_TIMES[7] + 4;
+      const finalGather = npcTarget(state.players[0]);
+      state.resolvedLocks.add(8);
+      state.players[0].x = BOSS.x;
+      state.players[0].y = BOSS.y - DIRECTION_LOCK_DISTANCE;
+      state.time = TOWER_TIMES[7] + 5;
+      const finalWait = npcTarget(state.players[0]);
+      state.time = TOWER_TIMES[7] + 8.2;
+      const finalMove = npcTarget(state.players[0]);
       state.time = originalTime;
       state.resolvedTowers = originalResolvedTowers;
       state.resolvedLocks = originalResolvedLocks;
+      state.pastFuture[8] = originalPastFuture;
 
       return {
-        ok: Math.abs(mover.x - 17) < 0.001 && mover.y === 0 &&
-          distance(beforeCast, stackPositionFor(2)) < 1 &&
-          distance(atCastStart, expectedTarget) < 0.001,
+        ok: Math.abs(mover.x - 10) < 0.001 && mover.y === 0 &&
+          distance(beforeCast, directionLockPositionFor(2)) < 1 &&
+          distance(atCastStart, expectedTarget) < 0.001 &&
+          distance(finalGather, { x: BOSS.x, y: BOSS.y - DIRECTION_LOCK_DISTANCE }) < 1 &&
+          distance(finalWait, { x: BOSS.x, y: BOSS.y - DIRECTION_LOCK_DISTANCE }) < 20 &&
+          finalMove.y < BOSS.y,
         mover,
         beforeCast,
         atCastStart,
         expectedTarget,
+        finalGather,
+        finalWait,
+        finalMove,
       };
     })())`,
     returnByValue: true,

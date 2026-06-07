@@ -45,6 +45,7 @@ const DIRECTION_LOCK_DISTANCE = 100;
 const DIRECTION_LOCK_TOLERANCE = 82;
 const DIRECTION_LOCK_HALF_ANGLE = 15 * Math.PI / 180;
 const PLAYER_MOVE_SPEED = 100;
+const NPC_ARRIVAL_MARGIN = 0.12;
 const ROLES = [
   { id: "MT", pair: "ST", kind: "tank", category: "tank", color: "#3b8ded", icon: "assets/TankRole.png" },
   { id: "ST", pair: "MT", kind: "tank", category: "tank", color: "#3b8ded", icon: "assets/TankRole.png" },
@@ -168,6 +169,8 @@ function createPlayers() {
       group,
       x: 330 + (index % 4) * 46,
       y: 675 + Math.floor(index / 4) * 38,
+      startX: 330 + (index % 4) * 46,
+      startY: 675 + Math.floor(index / 4) * 38,
       targetX: 400,
       targetY: 640,
       stacks: 4,
@@ -227,6 +230,8 @@ function startGame(playerId) {
   const player = getPlayer();
   player.x = 400;
   player.y = 650;
+  player.startX = player.x;
+  player.startY = player.y;
   UI.roleModal.classList.add("hidden");
   UI.resultModal.classList.add("hidden");
   updateAssignment();
@@ -324,6 +329,34 @@ function stackPositionFor(sourceRound) {
   };
 }
 
+function directionLockPositionFor(sourceRound) {
+  if (sourceRound === 8) {
+    return { x: BOSS.x, y: BOSS.y - DIRECTION_LOCK_DISTANCE };
+  }
+  return stackPositionFor(sourceRound);
+}
+
+function finalSafePositionFor(sourceRound) {
+  const flavor = state.pastFuture[sourceRound] || "過去";
+  return {
+    x: BOSS.x,
+    y: BOSS.y + (flavor === "過去" ? -DIRECTION_LOCK_DISTANCE : DIRECTION_LOCK_DISTANCE),
+  };
+}
+
+function assignmentPositionFor(player, round) {
+  return assignmentFor(player, round) || supportPosition(player, round);
+}
+
+function stagingPositionFor(player, round) {
+  if (round === 1) return { x: player.startX, y: player.startY };
+  const previousRound = round - 1;
+  if (previousRound % 2 === 0) {
+    return directionLockPositionFor(previousRound);
+  }
+  return assignmentPositionFor(player, previousRound);
+}
+
 function wanderingTarget(player, base, settleAt) {
   const remaining = settleAt - state.time;
   const amplitude = Math.min(34, Math.max(0, (remaining - 1.4) * 4.5));
@@ -334,23 +367,39 @@ function wanderingTarget(player, base, settleAt) {
   };
 }
 
+function timedTarget(player, destination, staging, deadline) {
+  const remaining = deadline - state.time;
+  const travelTime = distance(player, destination) / PLAYER_MOVE_SPEED;
+  const target = remaining <= travelTime + NPC_ARRIVAL_MARGIN ? destination : staging;
+  return wanderingTarget(player, target, deadline);
+}
+
 function npcTarget(player) {
   const round = activeRound();
   const info = towerInfo(round);
   for (const sourceRound of [2, 4, 6, 8]) {
     const base = TOWER_TIMES[sourceRound - 1];
     if (state.resolvedTowers.has(sourceRound) && !state.resolvedLocks.has(sourceRound)) {
-      const stack = stackPositionFor(sourceRound);
+      const stack = directionLockPositionFor(sourceRound);
       return wanderingTarget(player, stack, base + 4.15);
     }
-    if (sourceRound === 8 && state.time >= base + 5 && state.time < base + 10.6) {
-      return { x: BOSS.x, y: BOSS.y + 120 };
+    if (sourceRound === 8 && state.resolvedLocks.has(sourceRound) &&
+        state.time < base + 10.6) {
+      return timedTarget(
+        player,
+        finalSafePositionFor(sourceRound),
+        directionLockPositionFor(sourceRound),
+        base + 10
+      );
     }
   }
 
-  const assignment = assignmentFor(player, round);
-  const destination = assignment || supportPosition(player, round);
-  return wanderingTarget(player, destination, info.time);
+  return timedTarget(
+    player,
+    assignmentPositionFor(player, round),
+    stagingPositionFor(player, round),
+    info.time
+  );
 }
 
 function moveToward(player, target, dt) {
@@ -553,7 +602,7 @@ function resolveCircle(round) {
 }
 
 function isDirectionLockPositionValid(player, sourceRound) {
-  const stack = stackPositionFor(sourceRound);
+  const stack = directionLockPositionFor(sourceRound);
   const targetAngle = Math.atan2(stack.y - BOSS.y, stack.x - BOSS.x);
   const playerAngle = Math.atan2(player.y - BOSS.y, player.x - BOSS.x);
   const radialDifference = Math.abs(distance(player, BOSS) - DIRECTION_LOCK_DISTANCE);
@@ -574,7 +623,13 @@ function resolveHalf(sourceRound) {
   if (state.resolvedHalves.has(sourceRound) || !state.running) return;
   state.resolvedHalves.add(sourceRound);
   const player = getPlayer();
-  if (player.y < BOSS.y + 4) {
+  const safePosition = sourceRound === 8
+    ? finalSafePositionFor(sourceRound)
+    : { x: BOSS.x, y: BOSS.y + DIRECTION_LOCK_DISTANCE };
+  const onUnsafeSide = safePosition.y < BOSS.y
+    ? player.y > BOSS.y - 4
+    : player.y < BOSS.y + 4;
+  if (onUnsafeSide) {
     fail(`${state.pastFuture[sourceRound]}：分身の半面AoEを受けました。`);
     return;
   }
@@ -756,7 +811,14 @@ function drawMechanics() {
     if (state.time >= base + 5 && state.time < base + 10.6) {
       const alpha = 0.15 + 0.3 * Math.max(0, (state.time - (base + 5)) / 5);
       ctx.fillStyle = `rgba(192, 65, 79, ${alpha})`;
-      ctx.fillRect(0, 0, W, BOSS.y);
+      const safePosition = sourceRound === 8
+        ? finalSafePositionFor(sourceRound)
+        : { x: BOSS.x, y: BOSS.y + DIRECTION_LOCK_DISTANCE };
+      if (safePosition.y < BOSS.y) {
+        ctx.fillRect(0, BOSS.y, W, W - BOSS.y);
+      } else {
+        ctx.fillRect(0, 0, W, BOSS.y);
+      }
       ctx.strokeStyle = "#ff7d86";
       ctx.lineWidth = 3;
       ctx.beginPath();

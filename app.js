@@ -47,8 +47,8 @@ const SPELL_RADII = {
   circle: 72,
 };
 const FAN_LENGTH = 235;
-const FAN_HALF_ANGLE = Math.PI / 5;
-const PAST_FUTURE_RADIUS = SPELL_RADII.circle;
+const FAN_HALF_ANGLE = Math.PI / 4;
+const PAST_FUTURE_RADIUS = SPELL_RADII.circle * 1.1;
 const DIRECTION_LOCK_DISTANCE = 100;
 const DIRECTION_LOCK_TOLERANCE = 82;
 const DIRECTION_LOCK_HALF_ANGLE = 15 * Math.PI / 180;
@@ -394,7 +394,7 @@ function ktAssignmentFor(player, round) {
   if (mark === "fan") {
     return side === 0
       ? { tower: 0, x: 330, y: 460, name: "塔1・内側扇" }
-      : { tower: 1, x: 480, y: 460, name: "塔2・内側扇" };
+      : { tower: 1, x: 475, y: 460, name: "塔2・内側扇" };
   }
   return side === 0
     ? { tower: 0, x: 285, y: 555, name: "塔1・外側円" }

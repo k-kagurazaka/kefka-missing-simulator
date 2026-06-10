@@ -37,8 +37,8 @@ const W = 800;
 const ARENA = { x: 400, y: 400, r: 350 };
 const BOSS = { x: 400, y: 400, r: 29 };
 const TOWERS = [
-  { x: 300, y: 505, r: 66, label: "塔1" },
-  { x: 500, y: 505, r: 66, label: "塔2" },
+  { x: 308, y: 503, r: 70, label: "塔1" },
+  { x: 492, y: 503, r: 70, label: "塔2" },
 ];
 const SPELL_RADII = {
   share: 87,
@@ -71,6 +71,7 @@ const STRATEGIES = {
 const SPREAD_METHODS = {
   kt: { name: "KT式" },
   piren: { name: "ぴれん式" },
+  ktdn: { name: "KTDN式" },
 };
 const GROUP_ROUNDS = { A: [1, 2, 3, 8], B: [4, 5, 6, 7] };
 const TOWER_TIMES = [10, 20, 30, 40, 50, 60, 70, 80];
@@ -408,13 +409,144 @@ function pirenAssignmentFor(player, round) {
     : { tower: 1, x: 500, y: 565, name: "塔2・下円" };
 }
 
+const KTDN_POS = {
+  oddT1C:  { tower: 0, x: 308, y: 503, name: "塔1・中央(share)" },
+  oddT2N:  { tower: 1, x: 478, y: 439, name: "塔2・北(share)" },
+  oddT1S:  { tower: 0, x: 308, y: 568, name: "塔1・南(扇)" },
+  oddT2S:  { tower: 1, x: 492, y: 568, name: "塔2・南(円)" },
+  evenT1N: { tower: 0, x: 322, y: 439, name: "塔1・北(扇)" },
+  evenT1S: { tower: 0, x: 308, y: 568, name: "塔1・南(円)" },
+  evenT2N: { tower: 1, x: 478, y: 439, name: "塔2・北(扇)" },
+  evenT2S: { tower: 1, x: 492, y: 568, name: "塔2・南(円)" },
+};
+
+function ktdnComputeRoundLayout(activePlayers, round, priorRound, priorLayout) {
+  const info = towerInfo(round);
+  const result = {};
+
+  if (info.odd) {
+    const shares = activePlayers.filter((p) => p.marks[round] === "share");
+    const fan = activePlayers.find((p) => p.marks[round] === "fan");
+    const circle = activePlayers.find((p) => p.marks[round] === "circle");
+
+    if (fan) result[fan.id] = KTDN_POS.oddT1S;
+    if (circle) result[circle.id] = KTDN_POS.oddT2S;
+
+    if (priorRound == null) {
+      for (const p of shares) {
+        result[p.id] = markSide(p, round) === 0 ? KTDN_POS.oddT1C : KTDN_POS.oddT2N;
+      }
+    } else {
+      const shareTowers = shares.map((p) => priorLayout[p.id].tower);
+      if (shareTowers.length === 2 && shareTowers[0] === shareTowers[1]) {
+        const stuckTower = shareTowers[0];
+        const swapPlayer = shares.find((p) => p.marks[priorRound] === "circle");
+        const stayPlayer = shares.find((p) => p !== swapPlayer);
+        if (stuckTower === 0) {
+          result[stayPlayer.id] = KTDN_POS.oddT1C;
+          result[swapPlayer.id] = KTDN_POS.oddT2N;
+        } else {
+          result[stayPlayer.id] = KTDN_POS.oddT2N;
+          result[swapPlayer.id] = KTDN_POS.oddT1C;
+        }
+      } else {
+        for (const p of shares) {
+          const t = priorLayout[p.id].tower;
+          result[p.id] = t === 0 ? KTDN_POS.oddT1C : KTDN_POS.oddT2N;
+        }
+      }
+    }
+  } else {
+    const assignToTower = (player, tower) => {
+      const mark = player.marks[round];
+      if (tower === 0) {
+        result[player.id] = mark === "fan" ? KTDN_POS.evenT1N : KTDN_POS.evenT1S;
+      } else {
+        result[player.id] = mark === "fan" ? KTDN_POS.evenT2N : KTDN_POS.evenT2S;
+      }
+    };
+
+    if (priorRound == null) {
+      for (const p of activePlayers) {
+        const cat = p.role.category;
+        const tower = (cat === "tank" || cat === "melee") ? 0 : 1;
+        assignToTower(p, tower);
+      }
+    } else {
+      const towerPlayers = [[], []];
+      for (const p of activePlayers) {
+        towerPlayers[priorLayout[p.id].tower].push(p);
+      }
+      const t0Marks = towerPlayers[0].map((p) => p.marks[round]);
+      const stuck = t0Marks.length === 2 && t0Marks[0] === t0Marks[1];
+
+      if (stuck) {
+        const t0South = towerPlayers[0].find((p) => p.marks[priorRound] === "fan");
+        const t0Other = towerPlayers[0].find((p) => p !== t0South);
+        const t1South = towerPlayers[1].find((p) => p.marks[priorRound] === "circle");
+        const t1Other = towerPlayers[1].find((p) => p !== t1South);
+        assignToTower(t0Other, 0);
+        assignToTower(t1South, 0);
+        assignToTower(t0South, 1);
+        assignToTower(t1Other, 1);
+      } else {
+        for (const p of activePlayers) {
+          assignToTower(p, priorLayout[p.id].tower);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+function ktdnFullLayout(group) {
+  const activePlayers = state.players.filter((p) => p.group === group);
+  const rounds = GROUP_ROUNDS[group];
+  const layouts = {};
+  for (let i = 0; i < rounds.length; i += 1) {
+    const round = rounds[i];
+    const priorRound = i > 0 ? rounds[i - 1] : null;
+    const priorLayout = priorRound != null ? layouts[priorRound] : null;
+    layouts[round] = ktdnComputeRoundLayout(activePlayers, round, priorRound, priorLayout);
+  }
+  return layouts;
+}
+
+function ktdnAssignmentFor(player, round) {
+  const info = towerInfo(round);
+  if (player.group !== info.group) return null;
+  const layouts = ktdnFullLayout(player.group);
+  return layouts[round] && layouts[round][player.id] || null;
+}
+
 function assignmentFor(player, round, spread = state.spread || "kt") {
-  return spread === "piren"
-    ? pirenAssignmentFor(player, round)
-    : ktAssignmentFor(player, round);
+  if (spread === "ktdn") return ktdnAssignmentFor(player, round);
+  if (spread === "piren") return pirenAssignmentFor(player, round);
+  return ktAssignmentFor(player, round);
+}
+
+function ktdnSupportPosition(player, round) {
+  const info = towerInfo(round);
+  const positions = info.odd
+    ? {
+        tank: [371, 463],
+        healer: [308, 595],
+        melee: [429, 463],
+        ranged: [429, 463],
+      }
+    : {
+        tank: [341, 316],
+        healer: [239, 400],
+        melee: [459, 316],
+        ranged: [561, 400],
+      };
+  const [x, y] = positions[player.role.category];
+  return { x, y };
 }
 
 function supportPosition(player, round, spread = state.spread || "kt") {
+  if (spread === "ktdn") return ktdnSupportPosition(player, round);
   const info = towerInfo(round);
   if (spread === "piren") {
     const positions = info.odd
@@ -1200,3 +1332,26 @@ if (autoplay) startGame(
   query.get("strategy") || "lean",
   query.get("spread") || query.get("position") || "kt"
 );
+
+window.__sim = {
+  get state() { return state; },
+  assignmentFor,
+  supportPosition,
+  towerInfo,
+  createPlayers,
+  markForRound,
+  markSide,
+  ROLES,
+  GROUP_ROUNDS,
+  PAIRS,
+  YARN_PAIRS,
+  TOWERS,
+  BOSS,
+  ARENA,
+  TOWER_TIMES,
+  MARK_LABEL,
+  TOWER_PRIORITY,
+  SPELL_RADII,
+  FAN_LENGTH,
+  FAN_HALF_ANGLE,
+};

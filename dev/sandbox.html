@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandbox - KTDN式</title>
+    <link rel="stylesheet" href="/dev/sandbox.css">
+  </head>
+  <body>
+    <aside class="dev-panel">
+      <h1>SANDBOX (KTDN)</h1>
+
+      <section class="section">
+        <div class="field-label">Round</div>
+        <div class="round-pager" data-field="round-pager"></div>
+        <label>
+          <input data-field="show-markers" type="checkbox"> show markers
+        </label>
+        <label>
+          <input data-field="simulate-attacks" type="checkbox"> simulate attacks
+        </label>
+      </section>
+
+      <section class="section">
+        <h2>PLAYER MARKS (round <span data-field="marks-round">1</span>)</h2>
+        <div class="marks-grid" data-field="marks-grid"></div>
+        <div class="group-info">
+          <div><b>A:</b> <span data-field="group-a">—</span></div>
+          <div><b>B:</b> <span data-field="group-b">—</span></div>
+        </div>
+      </section>
+
+      <section class="section actions">
+        <button type="button" data-action="reroll">Re-roll marks</button>
+        <button type="button" data-action="snap">Snap to assignment</button>
+        <button type="button" data-action="reset-round">Reset this round</button>
+        <button type="button" data-action="reset-all">Reset all rounds</button>
+        <button type="button" class="full" data-action="dump">Dump layout to log</button>
+      </section>
+    </aside>
+
+    <main class="arena-host">
+      <canvas id="sandbox-arena" width="800" height="800"></canvas>
+    </main>
+
+    <!-- Stub DOM so /app.js can initialize without errors -->
+    <div class="stubs">
+      <canvas id="arena" width="800" height="800"></canvas>
+      <span id="timeDisplay"></span>
+      <span id="nextDisplay"></span>
+      <span id="stackDisplay"></span>
+      <img id="roleIcon" src="" alt="">
+      <span id="roleName"></span>
+      <span id="pairName"></span>
+      <b id="markBadge"></b>
+      <span id="groupName"></span>
+      <span id="towerAssignment"></span>
+      <span id="roundDisplay"></span>
+      <ol id="timeline"></ol>
+      <select id="speedSelect"><option value="1">1</option></select>
+      <div id="castBar"></div>
+      <span id="castName"></span>
+      <i id="castFill"></i>
+      <div id="banner"></div>
+      <div id="roleModal" class="hidden"></div>
+      <div id="resultModal" class="hidden"></div>
+      <span id="resultKicker"></span>
+      <h2 id="resultTitle"></h2>
+      <p id="resultReason"></p>
+      <button id="retryButton"></button>
+      <span id="selectionTitle"></span>
+      <div id="strategyButtons"></div>
+      <div id="spreadSelection"></div>
+      <div id="spreadButtons"></div>
+      <div id="roleSelection"></div>
+      <div id="roleButtons"></div>
+      <strong id="strategyName"></strong>
+    </div>
+
+    <script src="/app.js"></script>
+    <script src="/dev/sandbox.js"></script>
+  </body>
+</html>

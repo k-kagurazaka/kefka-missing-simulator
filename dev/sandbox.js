@@ -3,8 +3,6 @@
   const PLAYER_RADIUS = 12;
   const HIT_RADIUS = 16;
   const LS_KEY = "sandbox-layout-v3";
-  const STRATEGY = "yarn";
-  const SPREAD = "ktdn";
 
   function waitForSim() {
     if (!window.__sim) {
@@ -38,9 +36,7 @@
     }
 
     function buildState() {
-      sim.state.strategy = STRATEGY;
-      sim.state.spread = SPREAD;
-      sim.state.players = sim.createPlayers(STRATEGY);
+      sim.state.players = sim.createPlayers();
       restoreFromStorage();
       syncPlayersToRound();
       refreshMarksGrid();
@@ -228,8 +224,6 @@
       const payload = {
         action: "layout",
         round,
-        strategy: STRATEGY,
-        spread: SPREAD,
         players: sim.state.players.map((p) => ({
           id: p.id,
           group: p.group,

@@ -11,13 +11,7 @@ const UI = {
   resultTitle: document.getElementById("resultTitle"),
   resultReason: document.getElementById("resultReason"),
   retry: document.getElementById("retryButton"),
-  selectionTitle: document.getElementById("selectionTitle"),
-  strategyButtons: document.getElementById("strategyButtons"),
-  spreadSelection: document.getElementById("spreadSelection"),
-  spreadButtons: document.getElementById("spreadButtons"),
-  roleSelection: document.getElementById("roleSelection"),
   roleButtons: document.getElementById("roleButtons"),
-  strategyName: document.getElementById("strategyName"),
   roleIcon: document.getElementById("roleIcon"),
   roleName: document.getElementById("roleName"),
   pairName: document.getElementById("pairName"),
@@ -39,6 +33,18 @@ const BOSS = { x: 400, y: 400, r: 29 };
 const TOWERS = [
   { x: 308, y: 503, r: 70, label: "塔1" },
   { x: 492, y: 503, r: 70, label: "塔2" },
+];
+const BOSS_OUTER_RING = 98;
+const BOSS_INNER_RING = BOSS_OUTER_RING * 0.862;
+const FIELD_MARKERS = [
+  { label: "A", x: 400, y: 214, shape: "circle", color: "#d03c64" },
+  { label: "2", x: 531, y: 269, shape: "square", color: "#cdc85d" },
+  { label: "B", x: 586, y: 400, shape: "circle", color: "#cdc85d" },
+  { label: "3", x: 531, y: 531, shape: "square", color: "#3473c3" },
+  { label: "C", x: 400, y: 586, shape: "circle", color: "#3473c3" },
+  { label: "4", x: 269, y: 531, shape: "square", color: "#b47bb7" },
+  { label: "D", x: 214, y: 400, shape: "circle", color: "#b47bb7" },
+  { label: "1", x: 269, y: 269, shape: "square", color: "#d03c64" },
 ];
 const SPELL_RADII = {
   share: 87,
@@ -62,17 +68,7 @@ const ROLES = [
   { id: "D3", pair: "D4", kind: "dps", category: "ranged", color: "#e34f57", icon: "assets/DPSRole.png" },
   { id: "D4", pair: "D3", kind: "dps", category: "ranged", color: "#e34f57", icon: "assets/DPSRole.png" },
 ];
-const PAIRS = [["MT", "ST"], ["H1", "H2"], ["D1", "D2"], ["D3", "D4"]];
 const YARN_PAIRS = [["MT", "H1"], ["ST", "H2"], ["D1", "D3"], ["D2", "D4"]];
-const STRATEGIES = {
-  lean: { name: "りーん式" },
-  yarn: { name: "ヤーン式" },
-};
-const SPREAD_METHODS = {
-  kt: { name: "KT式" },
-  piren: { name: "ぴれん式" },
-  ktdn: { name: "KTDN式" },
-};
 const GROUP_ROUNDS = { A: [1, 2, 3, 8], B: [4, 5, 6, 7] };
 const TOWER_TIMES = [10, 20, 30, 40, 50, 60, 70, 80];
 const TIMELINE_ITEMS = [
@@ -107,13 +103,11 @@ let state = {
   resolvedHalves: new Set(),
   spellEffects: [],
   pastFuture: {},
+  pastFutureLocks: {},
+  lastTowerResolvedAt: null,
   moveTarget: null,
   bannerUntil: 0,
-  strategy: null,
-  spread: null,
 };
-let selectedStrategy = null;
-let selectedSpread = null;
 
 if (querySpeed > 0) {
   if (![...UI.speed.options].some((option) => Number(option.value) === querySpeed)) {
@@ -153,20 +147,12 @@ function createOpeningMarks() {
   return marks;
 }
 
-function buildGroups(openingMarks, strategy = "lean") {
+function buildGroups(openingMarks) {
   const groupA = new Set();
-  if (strategy === "yarn") {
-    for (const pair of YARN_PAIRS) {
-      if (pair.some((id) => openingMarks[id] === "share")) {
-        pair.forEach((id) => groupA.add(id));
-      }
+  for (const pair of YARN_PAIRS) {
+    if (pair.some((id) => openingMarks[id] === "share")) {
+      pair.forEach((id) => groupA.add(id));
     }
-    return groupA;
-  }
-  for (const [higher, lower] of PAIRS) {
-    if (openingMarks[higher] === "share") groupA.add(higher);
-    else if (openingMarks[lower] === "share") groupA.add(lower);
-    else groupA.add(higher);
   }
   return groupA;
 }
@@ -185,20 +171,21 @@ function nextRoundFor(player, afterRound = 0) {
   return GROUP_ROUNDS[player.group].find((round) => round > afterRound) || null;
 }
 
-function createPlayers(strategy = "lean") {
+function createPlayers() {
   const openingMarks = createOpeningMarks();
-  const groupA = buildGroups(openingMarks, strategy);
+  const groupA = buildGroups(openingMarks);
   const players = ROLES.map((role, index) => {
     const group = groupA.has(role.id) ? "A" : "B";
     const firstRound = GROUP_ROUNDS[group][0];
+    const opening = KTDN_OPENING_POSITIONS[role.id];
     return {
       id: role.id,
       role,
       group,
-      x: 330 + (index % 4) * 46,
-      y: 675 + Math.floor(index / 4) * 38,
-      startX: 330 + (index % 4) * 46,
-      startY: 675 + Math.floor(index / 4) * 38,
+      x: opening.x,
+      y: opening.y,
+      startX: opening.x,
+      startY: opening.y,
       targetX: 400,
       targetY: 640,
       stacks: 4,
@@ -228,77 +215,24 @@ function setupRoleButtons() {
     const button = document.createElement("button");
     button.className = "role-button";
     button.innerHTML = `<img src="${role.icon}" alt=""><strong>${role.id}</strong>`;
-    button.addEventListener("click", () => startGame(role.id, selectedStrategy, selectedSpread));
+    button.addEventListener("click", () => startGame(role.id));
     UI.roleButtons.appendChild(button);
   }
 }
 
-function selectStrategy(strategy) {
-  if (!STRATEGIES[strategy]) return;
-  selectedStrategy = strategy;
-  for (const button of UI.strategyButtons.querySelectorAll(".strategy-button")) {
-    const selected = button.dataset.strategy === strategy;
-    button.classList.toggle("selected", selected);
-    button.setAttribute("aria-pressed", String(selected));
-  }
-  UI.selectionTitle.textContent = "散開位置を選択";
-  UI.strategyButtons.classList.add("hidden");
-  selectedSpread = null;
-  for (const button of UI.spreadButtons.querySelectorAll(".spread-button")) {
-    button.classList.remove("selected");
-    button.setAttribute("aria-pressed", "false");
-  }
-  UI.spreadSelection.classList.remove("hidden");
-  UI.roleSelection.classList.add("hidden");
-}
-
-function selectSpread(spread) {
-  if (!selectedStrategy || !SPREAD_METHODS[spread]) return;
-  selectedSpread = spread;
-  for (const button of UI.spreadButtons.querySelectorAll(".spread-button")) {
-    const selected = button.dataset.spread === spread;
-    button.classList.toggle("selected", selected);
-    button.setAttribute("aria-pressed", String(selected));
-  }
-  UI.selectionTitle.textContent = "担当ロールを選択";
-  UI.strategyName.textContent = `${STRATEGIES[selectedStrategy].name} / ${SPREAD_METHODS[spread].name} · 1238 / 4567`;
-  UI.spreadSelection.classList.add("hidden");
-  UI.roleSelection.classList.remove("hidden");
-}
-
-function resetSelection() {
-  selectedStrategy = null;
-  selectedSpread = null;
-  UI.selectionTitle.textContent = "攻略法を選択";
-  UI.strategyButtons.classList.remove("hidden");
-  UI.spreadSelection.classList.add("hidden");
-  UI.roleSelection.classList.add("hidden");
-  for (const button of UI.strategyButtons.querySelectorAll(".strategy-button")) {
-    button.classList.remove("selected");
-    button.setAttribute("aria-pressed", "false");
-  }
-  for (const button of UI.spreadButtons.querySelectorAll(".spread-button")) {
-    button.classList.remove("selected");
-    button.setAttribute("aria-pressed", "false");
-  }
-}
-
-function pairIdFor(playerId, strategy) {
-  const pairs = strategy === "yarn" ? YARN_PAIRS : PAIRS;
-  const pair = pairs.find((ids) => ids.includes(playerId));
+function pairIdFor(playerId) {
+  const pair = YARN_PAIRS.find((ids) => ids.includes(playerId));
   return pair?.find((id) => id !== playerId) || "—";
 }
 
-function startGame(playerId, strategy = "lean", spread = "kt") {
-  const activeStrategy = STRATEGIES[strategy] ? strategy : "lean";
-  const activeSpread = SPREAD_METHODS[spread] ? spread : "kt";
+function startGame(playerId) {
   state = {
     running: true,
     finished: false,
     time: -3,
     lastFrame: performance.now(),
     playerId,
-    players: createPlayers(activeStrategy),
+    players: createPlayers(),
     resolvedTowers: new Set(),
     resolvedCircles: new Set(),
     resolvedLocks: new Set(),
@@ -310,16 +244,11 @@ function startGame(playerId, strategy = "lean", spread = "kt") {
       6: randomChoice(["過去", "未来"]),
       8: randomChoice(["過去", "未来"]),
     },
+    pastFutureLocks: {},
+    lastTowerResolvedAt: null,
     moveTarget: null,
     bannerUntil: 0,
-    strategy: activeStrategy,
-    spread: activeSpread,
   };
-  const player = getPlayer();
-  player.x = 400;
-  player.y = 650;
-  player.startX = player.x;
-  player.startY = player.y;
   UI.roleModal.classList.add("hidden");
   UI.resultModal.classList.add("hidden");
   updateAssignment();
@@ -352,62 +281,12 @@ function markSide(player, round) {
   return peers.indexOf(player);
 }
 
-function ktAssignmentFor(player, round) {
-  const info = towerInfo(round);
-  if (player.group !== info.group) return null;
-  const mark = markForRound(player, round);
-  if (info.odd) {
-    if (mark === "fan") return { tower: 0, x: 260, y: 530, name: "塔1・外側" };
-    if (mark === "circle") return { tower: 1, x: 545, y: 550, name: "塔2・外側" };
-    if (markSide(player, round) === 0) {
-      const radius = TOWERS[0].r / 2;
-      return {
-        tower: 0,
-        x: TOWERS[0].x + Math.cos(-Math.PI / 4) * radius,
-        y: TOWERS[0].y + Math.sin(-Math.PI / 4) * radius,
-        name: "塔1・右上頭割り",
-      };
-    }
-    const radius = TOWERS[1].r * 0.82;
-    return {
-      tower: 1,
-      x: TOWERS[1].x + Math.cos(-3 * Math.PI / 4) * radius,
-      y: TOWERS[1].y + Math.sin(-3 * Math.PI / 4) * radius,
-      name: "塔2・左上頭割り",
-    };
-  }
-  const side = markSide(player, round);
-  if (mark === "fan") {
-    return side === 0
-      ? { tower: 0, x: 330, y: 460, name: "塔1・内側扇" }
-      : { tower: 1, x: 475, y: 460, name: "塔2・内側扇" };
-  }
-  return side === 0
-    ? { tower: 0, x: 285, y: 555, name: "塔1・外側円" }
-    : { tower: 1, x: 515, y: 555, name: "塔2・外側円" };
-}
-
-function pirenAssignmentFor(player, round) {
-  const info = towerInfo(round);
-  if (player.group !== info.group) return null;
-  const mark = markForRound(player, round);
-  if (info.odd) {
-    if (mark === "fan") return { tower: 0, x: 300, y: 560, name: "塔1・左誘導扇" };
-    if (mark === "circle") return { tower: 1, x: 500, y: 560, name: "塔2・下円" };
-    return markSide(player, round) === 0
-      ? { tower: 0, x: 300, y: 485, name: "塔1・縦頭割り" }
-      : { tower: 1, x: 500, y: 450, name: "塔2・縦頭割り" };
-  }
-  const side = markSide(player, round);
-  if (mark === "fan") {
-    return side === 0
-      ? { tower: 0, x: 300, y: 450, name: "塔1・上扇" }
-      : { tower: 1, x: 500, y: 450, name: "塔2・上扇" };
-  }
-  return side === 0
-    ? { tower: 0, x: 300, y: 565, name: "塔1・下円" }
-    : { tower: 1, x: 500, y: 565, name: "塔2・下円" };
-}
+const KTDN_OPENING_POSITIONS = {
+  MT: { x: 254, y: 269 }, H1: { x: 284, y: 269 },
+  ST: { x: 516, y: 269 }, H2: { x: 546, y: 269 },
+  D2: { x: 516, y: 531 }, D4: { x: 546, y: 531 },
+  D1: { x: 254, y: 531 }, D3: { x: 284, y: 531 },
+};
 
 const KTDN_POS = {
   oddT1C:  { tower: 0, x: 308, y: 503, name: "塔1・中央(share)" },
@@ -520,13 +399,11 @@ function ktdnAssignmentFor(player, round) {
   return layouts[round] && layouts[round][player.id] || null;
 }
 
-function assignmentFor(player, round, spread = state.spread || "kt") {
-  if (spread === "ktdn") return ktdnAssignmentFor(player, round);
-  if (spread === "piren") return pirenAssignmentFor(player, round);
-  return ktAssignmentFor(player, round);
+function assignmentFor(player, round) {
+  return ktdnAssignmentFor(player, round);
 }
 
-function ktdnSupportPosition(player, round) {
+function supportPosition(player, round) {
   const info = towerInfo(round);
   const positions = info.odd
     ? {
@@ -541,46 +418,6 @@ function ktdnSupportPosition(player, round) {
         melee: [459, 316],
         ranged: [561, 400],
       };
-  const [x, y] = positions[player.role.category];
-  return { x, y };
-}
-
-function supportPosition(player, round, spread = state.spread || "kt") {
-  if (spread === "ktdn") return ktdnSupportPosition(player, round);
-  const info = towerInfo(round);
-  if (spread === "piren") {
-    const positions = info.odd
-      ? {
-          tank: [320, 430],
-          healer: [300, 580],
-          melee: [450, 420],
-          ranged: [455, 415],
-        }
-      : {
-          tank: [320, 320],
-          healer: [215, 505],
-          melee: [480, 320],
-          ranged: [585, 505],
-        };
-    const [x, y] = positions[player.role.category];
-    return { x, y };
-  }
-  if (!info.odd) {
-    const positions = {
-      tank: [330, 285],
-      healer: [240, 455],
-      melee: [470, 285],
-      ranged: [560, 455],
-    };
-    const [x, y] = positions[player.role.category];
-    return { x, y };
-  }
-  const positions = {
-    tank: [355, 450],
-    healer: [225, 560],
-    melee: [445, 450],
-    ranged: [475, 440],
-  };
   const [x, y] = positions[player.role.category];
   return { x, y };
 }
@@ -639,6 +476,16 @@ function timedTarget(player, destination, staging, deadline) {
 }
 
 function npcTarget(player) {
+  if (state.time < 0) {
+    return KTDN_OPENING_POSITIONS[player.id];
+  }
+  if (state.lastTowerResolvedAt != null &&
+      state.time < state.lastTowerResolvedAt + 1.6) {
+    return { x: player.x, y: player.y };
+  }
+  if (state.time < player.markUpdatedAt + 1.0) {
+    return { x: player.x, y: player.y };
+  }
   const round = activeRound();
   const info = towerInfo(round);
   for (const sourceRound of [2, 4, 6, 8]) {
@@ -764,6 +611,7 @@ function resolveTower(round) {
     }
   }
   showBanner(`塔 ${round} / 8  処理成功`, 1.6);
+  state.lastTowerResolvedAt = state.time;
   updateAssignment();
 }
 
@@ -837,7 +685,7 @@ function spellHazardFailure(effects, round) {
   return null;
 }
 
-function circleTargets(round) {
+function liveCircleTargets(round) {
   const info = towerInfo(round);
   const activeFans = state.players.filter(
     (player) => player.group === info.group && markForRound(player, round) === "fan"
@@ -846,6 +694,19 @@ function circleTargets(round) {
   const tank = inactive.find((player) => player.role.category === "tank");
   const melee = inactive.find((player) => player.role.category === "melee");
   return [...activeFans, tank, melee].filter(Boolean);
+}
+
+function circleTargets(round) {
+  const lock = state.pastFutureLocks[round];
+  if (lock) return lock.targets;
+  return liveCircleTargets(round);
+}
+
+function lockPastFutureTargets(round) {
+  state.pastFutureLocks[round] = {
+    targets: liveCircleTargets(round).map((p) => ({ id: p.id, x: p.x, y: p.y })),
+    endsAt: state.time + 1.4,
+  };
 }
 
 function pastFutureAoeFailure(round) {
@@ -910,6 +771,9 @@ function resolveHalf(sourceRound) {
 function resolveEvents() {
   for (let round = 1; round <= 8; round += 1) {
     const hitTime = TOWER_TIMES[round - 1];
+    if (round % 2 === 0 && state.time >= hitTime && !state.pastFutureLocks[round]) {
+      lockPastFutureTargets(round);
+    }
     if (state.time >= hitTime) resolveTower(round);
     if (round % 2 === 0 && state.time >= hitTime) resolveCircle(round);
     if (round % 2 === 0 && state.time >= hitTime + 5) resolveDirectionLock(round);
@@ -996,7 +860,7 @@ function updateAssignment() {
   const assignment = round ? assignmentFor(player, round) : null;
   UI.roleIcon.src = player.role.icon;
   UI.roleName.textContent = player.id;
-  UI.pairName.textContent = `PAIR ${pairIdFor(player.id, state.strategy)}`;
+  UI.pairName.textContent = `PAIR ${pairIdFor(player.id)}`;
   UI.groupName.textContent = `${player.group === "A" ? "先組" : "後組"} · ${GROUP_ROUNDS[player.group].join(" / ")}`;
   UI.markBadge.textContent = MARK_LABEL[player.mark];
   UI.markBadge.className = `mark-badge ${player.mark}`;
@@ -1030,12 +894,7 @@ function drawArena() {
     ctx.lineTo(ARENA.x + Math.cos(angle) * ARENA.r, ARENA.y + Math.sin(angle) * ARENA.r);
     ctx.stroke();
   }
-  ctx.beginPath();
-  ctx.arc(BOSS.x, BOSS.y, 105, 0, Math.PI * 2);
-  ctx.setLineDash([8, 8]);
-  ctx.strokeStyle = "rgba(194,211,233,0.5)";
-  ctx.stroke();
-  ctx.setLineDash([]);
+  drawFieldMarkers();
   drawMechanics();
   ctx.restore();
 
@@ -1062,10 +921,10 @@ function drawMechanics() {
   }
   drawSpellEffects();
 
-  const round = activeRound();
-  const info = towerInfo(round);
-  if (!info.odd && state.time >= info.time - 1.2 && state.time < info.time + 0.65) {
-    for (const target of circleTargets(round)) {
+  for (const sourceRound of [2, 4, 6, 8]) {
+    const lock = state.pastFutureLocks[sourceRound];
+    if (!lock || state.time > lock.endsAt) continue;
+    for (const target of lock.targets) {
       ctx.fillStyle = "rgba(33,196,213,0.18)";
       ctx.strokeStyle = "#31d5e5";
       ctx.setLineDash([7, 6]);
@@ -1080,9 +939,8 @@ function drawMechanics() {
 
   for (const sourceRound of [2, 4, 6, 8]) {
     const base = TOWER_TIMES[sourceRound - 1];
-    if (state.time >= base + 5 && state.time < base + 10.6) {
-      const alpha = 0.15 + 0.3 * Math.max(0, (state.time - (base + 5)) / 5);
-      ctx.fillStyle = `rgba(192, 65, 79, ${alpha})`;
+    if (state.time >= base + 10 && state.time < base + 11.4) {
+      ctx.fillStyle = "rgba(192, 65, 79, 0.45)";
       const safePosition = sourceRound === 8
         ? finalSafePositionFor(sourceRound)
         : { x: BOSS.x, y: BOSS.y + DIRECTION_LOCK_DISTANCE };
@@ -1192,9 +1050,43 @@ function drawClones(round) {
   }
 }
 
+function drawFieldMarkers() {
+  const HALF = 25;
+  ctx.save();
+  ctx.globalAlpha = 0.8;
+  ctx.lineWidth = 2;
+  ctx.font = "700 22px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const m of FIELD_MARKERS) {
+    ctx.strokeStyle = m.color;
+    ctx.fillStyle = m.color;
+    if (m.shape === "circle") {
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, HALF, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.rect(m.x - HALF, m.y - HALF, HALF * 2, HALF * 2);
+      ctx.stroke();
+    }
+    ctx.fillText(m.label, m.x, m.y + 1);
+  }
+  ctx.restore();
+}
+
 function drawBoss() {
   ctx.save();
   ctx.translate(BOSS.x, BOSS.y);
+  ctx.strokeStyle = "#ff3a4a";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, BOSS_OUTER_RING, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, BOSS_INNER_RING, 0, Math.PI * 2);
+  ctx.stroke();
+
   ctx.shadowColor = "#d7e5ff";
   ctx.shadowBlur = 15;
   ctx.fillStyle = "#d8e4f6";
@@ -1208,13 +1100,14 @@ function drawBoss() {
   ctx.fillStyle = "#1c2a3e";
   ctx.font = "900 12px sans-serif";
   ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
   ctx.fillText("BOSS", 0, 4);
   ctx.restore();
 }
 
 function drawMark(player) {
   if (state.time < player.markUpdatedAt || state.time > player.markUpdatedAt + 3) return;
-  const y = player.y - 27;
+  const y = player.y - 32;
   ctx.save();
   ctx.translate(player.x, y);
   ctx.lineWidth = 2;
@@ -1222,17 +1115,38 @@ function drawMark(player) {
   if (player.mark === "share") {
     ctx.fillStyle = "#e4ab2d";
     ctx.beginPath();
-    ctx.roundRect(-8, -8, 16, 16, 3);
-  } else if (player.mark === "circle") {
+    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    const arrows = [
+      [[0, -5], [3, -8], [3, -13], [-3, -13], [-3, -8]],
+      [[5, 0], [8, -3], [13, -3], [13, 3], [8, 3]],
+      [[0, 5], [3, 8], [3, 13], [-3, 13], [-3, 8]],
+      [[-5, 0], [-8, -3], [-13, -3], [-13, 3], [-8, 3]],
+    ];
+    for (const points of arrows) {
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+  if (player.mark === "circle") {
     ctx.fillStyle = "#d84cac";
     ctx.beginPath();
-    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+    ctx.arc(0, 0, 12, 0, Math.PI * 2);
   } else {
     ctx.fillStyle = "#7359ef";
+    const fanHalfAngle = Math.PI / 8;
+    const fanRadius = 26;
+    const apexY = 13;
     ctx.beginPath();
-    ctx.moveTo(0, -9);
-    ctx.lineTo(9, 8);
-    ctx.lineTo(-9, 8);
+    ctx.moveTo(0, apexY);
+    ctx.arc(0, apexY, fanRadius, -Math.PI / 2 - fanHalfAngle, -Math.PI / 2 + fanHalfAngle);
     ctx.closePath();
   }
   ctx.fill();
@@ -1312,26 +1226,13 @@ canvas.addEventListener("pointerdown", (event) => {
   };
 });
 UI.retry.addEventListener("click", () => {
-  startGame(state.playerId, state.strategy, state.spread);
+  startGame(state.playerId);
 });
 
-UI.strategyButtons.addEventListener("click", (event) => {
-  const button = event.target.closest(".strategy-button");
-  if (button) selectStrategy(button.dataset.strategy);
-});
-UI.spreadButtons.addEventListener("click", (event) => {
-  const button = event.target.closest(".spread-button");
-  if (button) selectSpread(button.dataset.spread);
-});
 setupRoleButtons();
 setupTimeline();
-resetSelection();
 drawArena();
-if (autoplay) startGame(
-  query.get("role") || "MT",
-  query.get("strategy") || "lean",
-  query.get("spread") || query.get("position") || "kt"
-);
+if (autoplay) startGame(query.get("role") || "MT");
 
 window.__sim = {
   get state() { return state; },
@@ -1343,7 +1244,6 @@ window.__sim = {
   markSide,
   ROLES,
   GROUP_ROUNDS,
-  PAIRS,
   YARN_PAIRS,
   TOWERS,
   BOSS,
